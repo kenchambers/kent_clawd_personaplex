@@ -13,13 +13,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     chromium-browser chromium-codecs-ffmpeg \
     fonts-liberation libnss3 libatk-bridge2.0-0 libdrm2 libxkbcommon0 libgbm1 \
     libx11-xcb1 libxcomposite1 libxdamage1 libxrandr2 libasound2 libpangocairo-1.0-0 \
-    && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 # Set Chromium path for Moltbot browser tool
 ENV CHROME_PATH=/usr/bin/chromium-browser
+
+# Ensure npm global packages are in PATH (critical for moltbot at runtime)
+ENV PATH="/usr/local/bin:$PATH"
 
 # Create python symlink (python3.11 is installed, but scripts expect 'python')
 RUN ln -sf /usr/bin/python3.11 /usr/bin/python && ln -sf /usr/bin/python3.11 /usr/bin/python3
@@ -34,8 +37,11 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | d
     && rm -rf /var/lib/apt/lists/*
 
 # Install Moltbot and verify installation
-RUN npm install -g moltbot@latest && npm cache clean --force \
-    && echo "Moltbot installed at: $(which moltbot)" \
+# Set npm prefix to /usr/local for consistent global bin path across npm versions
+RUN npm config set prefix /usr/local \
+    && npm install -g moltbot@latest && npm cache clean --force \
+    && echo "Verifying moltbot installation:" \
+    && which moltbot \
     && moltbot --version
 
 # Install AI coding assistants for autonomous development
