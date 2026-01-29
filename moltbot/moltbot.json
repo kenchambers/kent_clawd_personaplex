@@ -1,10 +1,6 @@
 {
   "agents": {
     "defaults": {
-      "model": {
-        "primary": "anthropic/claude-sonnet-4-20250514",
-        "fallbacks": ["anthropic/claude-3-5-haiku-20241022"]
-      },
       "thinkingDefault": true,
       "contextPruning": "adaptive",
       "compaction": {
