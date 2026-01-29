@@ -1,19 +1,16 @@
 {
   "agents": {
     "defaults": {
-      "workspace": "~/clawd",
       "model": {
         "primary": "anthropic/claude-sonnet-4-20250514",
         "fallbacks": ["anthropic/claude-3-5-haiku-20241022"]
       },
       "thinkingDefault": true,
-      "timeoutSeconds": 600,
       "contextPruning": "adaptive",
       "compaction": {
         "enabled": true,
         "memoryFlush": true
-      },
-      "blockStreamingDefault": false
+      }
     }
   },
   "tools": {
@@ -36,17 +33,13 @@
   "channels": {
     "whatsapp": {
       "dmPolicy": "allowlist",
-      "allowFrom": [],
-      "sendReadReceipts": true
+      "allowFrom": []
     }
   },
   "messages": {
     "inbound": {
       "debounceMs": 2000
     }
-  },
-  "session": {
-    "scope": "per-sender"
   },
   "cron": {
     "enabled": true
