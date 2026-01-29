@@ -1,4 +1,14 @@
 {
+  "agents": {
+    "defaults": {
+      "thinkingDefault": true,
+      "contextPruning": "adaptive",
+      "compaction": {
+        "enabled": true,
+        "memoryFlush": true
+      }
+    }
+  },
   "tools": {
     "profile": "full"
   },
@@ -22,7 +32,16 @@
       "allowFrom": []
     }
   },
+  "messages": {
+    "inbound": {
+      "debounceMs": 2000
+    }
+  },
   "cron": {
     "enabled": true
+  },
+  "logging": {
+    "level": "info",
+    "redactSensitive": "tools"
   }
 }
