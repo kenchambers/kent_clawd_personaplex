@@ -1,6 +1,9 @@
 #!/bin/bash
 set -u
 
+# Ensure npm global packages are in PATH (fixes "moltbot: command not found")
+export PATH="/usr/local/bin:$PATH"
+
 # PID tracking for graceful shutdown
 SYNC_PID=""
 TRADESVIZ_LOGIN_PID=""
@@ -69,6 +72,7 @@ if [ ! -d "$MOLTBOT_WORKSPACE" ] || [ ! -f "$MOLTBOT_WORKSPACE/AGENTS.md" ]; the
     cp -n /app/moltbot/TOOLS.md "$MOLTBOT_WORKSPACE/" 2>/dev/null || true
     cp -n /app/moltbot/USER.md "$MOLTBOT_WORKSPACE/" 2>/dev/null || true
     cp -n /app/moltbot/MEMORY.md "$MOLTBOT_WORKSPACE/" 2>/dev/null || true
+    cp -n /app/moltbot/IDEAS.md "$MOLTBOT_WORKSPACE/" 2>/dev/null || true
     cp -n /app/moltbot/skills/*.md "$MOLTBOT_WORKSPACE/skills/" 2>/dev/null || true
 
     echo "Moltbot workspace initialized successfully"
@@ -152,6 +156,65 @@ if [ -n "${TRADESVIZ_USERNAME:-}" ] && [ -n "${TRADESVIZ_PASSWORD:-}" ]; then
     TRADESVIZ_LOGIN_PID=$!
     echo "TradesViz login scheduled (PID: $TRADESVIZ_LOGIN_PID)"
 fi
+
+# ============================================
+# Scheduled Cron Jobs (after Moltbot starts)
+# ============================================
+# Configure automated tasks: self-reflection, afternoon summary, health monitor
+setup_cron_jobs() {
+    echo "Setting up scheduled cron jobs..."
+
+    # Check if cron jobs already exist (avoid duplicates on restart)
+    existing_crons=$(moltbot cron list 2>/dev/null || echo "")
+
+    # Hourly self-reflection (generates ideas, no notification)
+    if ! echo "$existing_crons" | grep -q "Self-Reflection"; then
+        echo "Adding Self-Reflection cron (hourly)..."
+        moltbot cron add \
+            --name "Self-Reflection" \
+            --cron "0 * * * *" \
+            --session isolated \
+            --model "sonnet" \
+            --message "Run hourly self-reflection per skills/self-reflection.md: 1) Review recent actions and their alignment with Kent's goals from USER.md and SOUL.md 2) Generate 1-3 actionable ideas to help Kent's trading business grow 3) Score each idea by impact, effort, urgency, alignment (max 50 points) 4) Add ideas to IDEAS.md with timestamps. Focus on data-driven, patient growth. No notification needed - just log ideas."
+    fi
+
+    # Afternoon summary at 3pm Tbilisi (includes top 3 ideas)
+    if ! echo "$existing_crons" | grep -q "Afternoon Summary"; then
+        if [ -n "${WHATSAPP_PHONE:-}" ]; then
+            echo "Adding Afternoon Summary cron (3pm daily)..."
+            moltbot cron add \
+                --name "Afternoon Summary" \
+                --cron "0 15 * * *" \
+                --tz "Asia/Tbilisi" \
+                --session isolated \
+                --message "Generate afternoon summary for Kent: 1) Trading status across all EAs 2) Work completed since last summary 3) Current priorities. IMPORTANT: Review IDEAS.md and include the TOP 3 highest-scoring ideas as an 'Actionable Ideas' section. Mark included ideas as 'reviewed' in IDEAS.md." \
+                --deliver --channel whatsapp --to "$WHATSAPP_PHONE"
+        else
+            echo "Skipping Afternoon Summary - WHATSAPP_PHONE not set"
+        fi
+    fi
+
+    # Health monitor every 4 hours (only notifies if issues found)
+    if ! echo "$existing_crons" | grep -q "Health Monitor"; then
+        echo "Adding Health Monitor cron (every 4 hours)..."
+        moltbot cron add \
+            --name "Health Monitor" \
+            --cron "0 */4 * * *" \
+            --session isolated \
+            --model "sonnet" \
+            --message "Run health check on all systems. Only notify Kent via WhatsApp if issues are found that need attention."
+    fi
+
+    echo "Cron jobs configured successfully"
+    moltbot cron list
+}
+
+# Run cron setup in background after Moltbot is ready
+(
+    wait_for_moltbot && setup_cron_jobs
+) >> /var/log/cron-setup.log 2>&1 &
+CRON_SETUP_PID=$!
+echo "Cron job setup scheduled (PID: $CRON_SETUP_PID)"
 
 # Create SSL directory for PersonaPlex
 SSL_DIR=$(mktemp -d)

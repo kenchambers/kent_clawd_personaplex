@@ -21,6 +21,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Set Chromium path for Moltbot browser tool
 ENV CHROME_PATH=/usr/bin/chromium-browser
 
+# Create python symlink (python3.11 is installed, but scripts expect 'python')
+RUN ln -sf /usr/bin/python3.11 /usr/bin/python && ln -sf /usr/bin/python3.11 /usr/bin/python3
+
 # Install rclone for Supabase Storage sync
 RUN curl -fsSL https://rclone.org/install.sh | bash
 
@@ -30,11 +33,16 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | d
     && apt-get update && apt-get install -y --no-install-recommends gh \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Moltbot
-RUN npm install -g moltbot@latest && npm cache clean --force
+# Install Moltbot and verify installation
+RUN npm install -g moltbot@latest && npm cache clean --force \
+    && echo "Moltbot installed at: $(which moltbot)" \
+    && moltbot --version
 
 # Install AI coding assistants for autonomous development
 RUN npm install -g @anthropic-ai/claude-code @google/gemini-cli && npm cache clean --force
+
+# Upgrade pip and setuptools to fix Ubuntu 22.04's install_layout bug
+RUN pip install --upgrade pip setuptools wheel
 
 # Clone and install PersonaPlex (note: package is in moshi/ subdirectory)
 RUN git clone --depth 1 https://github.com/nvidia/personaplex.git /opt/personaplex \
