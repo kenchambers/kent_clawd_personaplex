@@ -1,0 +1,28 @@
+{
+  "tools": {
+    "profile": "full"
+  },
+  "mcp": {
+    "servers": {
+      "notion": {
+        "transport": "http",
+        "url": "https://mcp.notion.com/mcp"
+      }
+    }
+  },
+  "browser": {
+    "enabled": true,
+    "headless": true,
+    "noSandbox": true,
+    "executablePath": "/usr/bin/chromium-browser"
+  },
+  "channels": {
+    "whatsapp": {
+      "dmPolicy": "allowlist",
+      "allowFrom": []
+    }
+  },
+  "cron": {
+    "enabled": true
+  }
+}
