@@ -97,8 +97,9 @@ EXPOSE 8998
 VOLUME ["/root/clawd"]
 
 # Health check via nginx reverse proxy (required for SaladCloud container gateway)
-# start-period=300s allows time for PersonaPlex model download (~7GB) on first run
-HEALTHCHECK --interval=30s --timeout=10s --start-period=300s --retries=3 \
+# start-period=600s allows time for PersonaPlex model download (~7GB) on first run
+# /health now proxies to orchestrator/health/deep which verifies all backends
+HEALTHCHECK --interval=30s --timeout=15s --start-period=600s --retries=5 \
     CMD curl -f http://127.0.0.1:8998/health || exit 1
 
 # Environment variables (set via SaladCloud portal or API)

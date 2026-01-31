@@ -111,24 +111,38 @@ async def health():
 
 @app.get("/health/deep")
 async def health_deep():
-    """Deep health check - verifies moshi voice server is actually responding."""
-    checks = {"orchestrator": "ok", "moshi": "unknown"}
+    """Deep health check - verifies all backend services are responding."""
+    checks = {"orchestrator": "ok", "moshi": "unknown", "moltbot": "unknown"}
 
-    # Check moshi server on internal port 8999 (self-signed SSL)
-    try:
-        async with httpx.AsyncClient(verify=False, timeout=5.0) as client:
+    async with httpx.AsyncClient(verify=False, timeout=5.0) as client:
+        # Check moshi server on internal port 8999 (self-signed SSL)
+        try:
             resp = await client.get("https://127.0.0.1:8999/")
             # Moshi returns HTML page when ready, 502/connection error when not
             if resp.status_code < 500:
                 checks["moshi"] = "ok"
             else:
                 checks["moshi"] = f"error: HTTP {resp.status_code}"
-    except httpx.ConnectError:
-        checks["moshi"] = "error: connection refused"
-    except httpx.TimeoutException:
-        checks["moshi"] = "error: timeout"
-    except Exception as e:
-        checks["moshi"] = f"error: {type(e).__name__}"
+        except httpx.ConnectError:
+            checks["moshi"] = "error: connection refused"
+        except httpx.TimeoutException:
+            checks["moshi"] = "error: timeout"
+        except Exception as e:
+            checks["moshi"] = f"error: {type(e).__name__}"
+
+        # Check Moltbot gateway on internal port 18789
+        try:
+            resp = await client.get("http://127.0.0.1:18789/health")
+            if resp.status_code == 200:
+                checks["moltbot"] = "ok"
+            else:
+                checks["moltbot"] = f"error: HTTP {resp.status_code}"
+        except httpx.ConnectError:
+            checks["moltbot"] = "error: connection refused"
+        except httpx.TimeoutException:
+            checks["moltbot"] = "error: timeout"
+        except Exception as e:
+            checks["moltbot"] = f"error: {type(e).__name__}"
 
     all_ok = all(v == "ok" for v in checks.values())
     status_code = 200 if all_ok else 503

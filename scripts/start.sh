@@ -51,6 +51,29 @@ wait_for_moltbot() {
     return 1
 }
 
+# Wait for orchestrator's deep health check (verifies PersonaPlex + Moltbot)
+wait_for_deep_health() {
+    local max_attempts=180  # 15 minutes max wait (model download can be slow)
+    local attempt=0
+    echo "Waiting for all services to be ready (deep health check)..."
+    while [ $attempt -lt $max_attempts ]; do
+        # Check orchestrator's deep health endpoint
+        response=$(curl -sf http://localhost:5000/health/deep 2>/dev/null)
+        if [ $? -eq 0 ]; then
+            status=$(echo "$response" | jq -r '.status' 2>/dev/null)
+            if [ "$status" = "ok" ]; then
+                echo "All services ready: $response"
+                return 0
+            fi
+            echo "Health check response: $response (attempt $attempt)"
+        fi
+        attempt=$((attempt + 1))
+        sleep 5
+    done
+    echo "ERROR: Timeout waiting for deep health after $((max_attempts * 5))s" >&2
+    return 1
+}
+
 # Validate required environment variables
 if [ -z "${HF_TOKEN:-}" ]; then
     echo "ERROR: HF_TOKEN environment variable is required for PersonaPlex"
@@ -293,6 +316,24 @@ MOLTBOT_PID=$!
 echo "Starting orchestrator..."
 uvicorn orchestrator.main:app --host "0.0.0.0" --port 5000 &
 UVICORN_PID=$!
+
+# Wait for orchestrator to be ready before checking deep health
+echo "Waiting for orchestrator to start..."
+for i in {1..30}; do
+    if curl -sf http://localhost:5000/health >/dev/null 2>&1; then
+        echo "Orchestrator is ready"
+        break
+    fi
+    sleep 1
+done
+
+# Wait for deep health (PersonaPlex + Moltbot) before starting nginx
+# This ensures nginx health checks will pass once it starts
+echo "Waiting for backend services before starting nginx..."
+wait_for_deep_health || {
+    echo "WARNING: Deep health check not passing yet, starting nginx anyway"
+    echo "Salad Cloud health probes will retry during start-period"
+}
 
 # Verify nginx config before starting
 echo "Verifying nginx configuration..."
