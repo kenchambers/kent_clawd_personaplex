@@ -2,3 +2,4 @@ fastapi>=0.115.0
 uvicorn>=0.34.0
 httpx>=0.28.0
 anthropic>=0.42.0
+accelerate>=0.27.0

@@ -27,6 +27,7 @@ docker buildx use salad-builder
 echo "Building and pushing image..."
 docker buildx build \
     --platform linux/amd64 \
+    --build-arg CONTAINER_VERSION="${IMAGE_TAG}" \
     -t "${FULL_IMAGE}" \
     --push \
     .

@@ -2,9 +2,11 @@ import asyncio
 import json
 import logging
 import time
+import ssl
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from pydantic import BaseModel
+import httpx
 from . import safety, llm, notify
 from .config import (
     PENDING_COMMAND_TTL_SECONDS,
@@ -105,6 +107,37 @@ app = FastAPI(lifespan=lifespan)
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+@app.get("/health/deep")
+async def health_deep():
+    """Deep health check - verifies moshi voice server is actually responding."""
+    checks = {"orchestrator": "ok", "moshi": "unknown"}
+
+    # Check moshi server on internal port 8999 (self-signed SSL)
+    try:
+        async with httpx.AsyncClient(verify=False, timeout=5.0) as client:
+            resp = await client.get("https://127.0.0.1:8999/")
+            # Moshi returns HTML page when ready, 502/connection error when not
+            if resp.status_code < 500:
+                checks["moshi"] = "ok"
+            else:
+                checks["moshi"] = f"error: HTTP {resp.status_code}"
+    except httpx.ConnectError:
+        checks["moshi"] = "error: connection refused"
+    except httpx.TimeoutException:
+        checks["moshi"] = "error: timeout"
+    except Exception as e:
+        checks["moshi"] = f"error: {type(e).__name__}"
+
+    all_ok = all(v == "ok" for v in checks.values())
+    status_code = 200 if all_ok else 503
+
+    from fastapi.responses import JSONResponse
+    return JSONResponse(
+        content={"status": "ok" if all_ok else "degraded", "checks": checks},
+        status_code=status_code
+    )
 
 
 @app.post("/process")

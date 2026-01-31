@@ -22,9 +22,11 @@ Kent runs a one-man trading business—managing prop firm accounts, MT5 Expert A
 
 ## Quick Start
 
-1. **Deploy to SaladCloud** (see [Deployment](#-deployment))
+1. **Deploy to SaladCloud** (see [DEPLOYMENT.md](./DEPLOYMENT.md) for step-by-step guide)
 2. **Connect WhatsApp** for notifications
 3. **Start talking** - describe what you need
+
+> **New:** Use `/salad deploy v15` in Claude Code to build and deploy in one command!
 
 ---
 
@@ -77,7 +79,8 @@ Kent runs a one-man trading business—managing prop firm accounts, MT5 Expert A
 
 | Job | Schedule | Description |
 |-----|----------|-------------|
-| Afternoon Summary | 3pm Tbilisi | Trading status, overnight work, priorities |
+| Self-Reflection | Every hour | Reviews actions, generates ideas, updates IDEAS.md |
+| Afternoon Summary | 3pm Tbilisi | Trading status, work completed, **top 3 actionable ideas** |
 | Health Monitor | Every 4 hours | VPS health, trading alerts if issues found |
 
 ---
@@ -174,11 +177,13 @@ The `moltbot/` folder contains the AI's personality, memory, and operating instr
 | `AGENTS.md` | Operating rules and responsibilities |
 | `USER.md` | Kent's profile, preferences, challenges |
 | `MEMORY.md` | Learned knowledge, trading baselines, repo registry |
+| `IDEAS.md` | Hourly idea log, scored for 3pm summary |
 | `TOOLS.md` | Tool usage guide, AI coding tools |
 | `skills/trading.md` | Trading monitoring, EA evaluation, prop firm rules |
 | `skills/github.md` | PR workflow, self-improvement, AI tool usage |
 | `skills/vps-admin.md` | VPS health checks, server management |
 | `skills/notion.md` | Notion organization, page management |
+| `skills/self-reflection.md` | Hourly introspection, idea generation process |
 
 ### Key Philosophy
 
@@ -287,12 +292,20 @@ moltbot agent --message "Say hello" --deliver --channel whatsapp --to +155512345
 After deployment, add scheduled automation:
 
 ```bash
-# Afternoon summary at 3pm Tbilisi
+# Hourly self-reflection (generates ideas, updates IDEAS.md)
+moltbot cron add \
+  --name "Self-Reflection" \
+  --cron "0 * * * *" \
+  --session isolated \
+  --message "Run hourly self-reflection per skills/self-reflection.md: 1) Review recent actions and their alignment with Kent's goals 2) Generate 1-3 actionable ideas to help Kent's trading business 3) Score ideas by impact, effort, urgency, alignment 4) Add ideas to moltbot/IDEAS.md with timestamps. Focus on data-driven, patient growth. No notification needed." \
+  --model "sonnet"
+
+# Afternoon summary at 3pm Tbilisi (includes top 3 ideas)
 moltbot cron add \
   --name "Afternoon Summary" \
   --cron "0 15 * * *" \
   --session isolated \
-  --message "Generate afternoon summary: trading status, work completed, priorities" \
+  --message "Generate afternoon summary: 1) Trading status across all EAs 2) Work completed since last summary 3) Current priorities. IMPORTANT: Review moltbot/IDEAS.md and include TOP 3 highest-scoring ideas as 'Actionable Ideas' section. Mark included ideas as 'reviewed' in IDEAS.md." \
   --deliver --channel whatsapp --to "+YOURPHONE"
 
 # Health monitor every 4 hours

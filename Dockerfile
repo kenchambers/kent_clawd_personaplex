@@ -4,6 +4,10 @@ FROM --platform=linux/amd64 nvidia/cuda:12.4.1-runtime-ubuntu22.04
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Asia/Tbilisi
 
+# Container version tracking (passed from build.sh via --build-arg)
+ARG CONTAINER_VERSION=unknown
+ENV CONTAINER_VERSION=${CONTAINER_VERSION}
+
 # Install system dependencies (single layer to reduce image size)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     software-properties-common \
@@ -36,13 +40,13 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | d
     && apt-get update && apt-get install -y --no-install-recommends gh \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Moltbot and verify installation
-# Set npm prefix to /usr/local for consistent global bin path across npm versions
+# Install Moltbot (bin symlinks may fail in Node 24+ npm, use npx wrapper)
+# NOTE: Skip version check during build - moltbot init is memory-intensive and causes OOM
 RUN npm config set prefix /usr/local \
-    && npm install -g moltbot@latest && npm cache clean --force \
-    && echo "Verifying moltbot installation:" \
-    && which moltbot \
-    && moltbot --version
+    && npm install -g moltbot@latest \
+    && npm cache clean --force \
+    && printf '#!/bin/sh\nexec npx moltbot "$@"\n' > /usr/local/bin/moltbot \
+    && chmod +x /usr/local/bin/moltbot
 
 # Install AI coding assistants for autonomous development
 RUN npm install -g @anthropic-ai/claude-code @google/gemini-cli && npm cache clean --force
@@ -56,8 +60,12 @@ RUN git clone --depth 1 https://github.com/nvidia/personaplex.git /opt/personapl
     && rm -rf /opt/personaplex/.git
 
 # Build PersonaPlex client
+# NOTE: Skip 'tsc' type-checking - it segfaults under QEMU when cross-compiling
+# for linux/amd64 on Apple Silicon. Vite uses esbuild which handles TS natively.
 WORKDIR /opt/personaplex/client
-RUN npm install && npm run build && npm cache clean --force
+RUN npm install \
+    && npx vite build \
+    && npm cache clean --force
 
 # Install orchestrator dependencies (rarely changes - cache this layer)
 WORKDIR /app
