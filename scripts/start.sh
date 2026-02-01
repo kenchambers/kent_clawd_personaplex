@@ -252,6 +252,31 @@ SSL_DIR=$(mktemp -d)
 echo "Created SSL directory: $SSL_DIR"
 
 # ============================================
+# Start nginx FIRST for health probe availability
+# ============================================
+# The /health/startup endpoint is served directly by nginx (no backend needed)
+# This allows Salad's startup probe to pass while backends are still loading
+echo "Verifying nginx configuration..."
+if ! nginx -t 2>/dev/null; then
+    echo "ERROR: nginx configuration is invalid"
+    nginx -t
+    exit 1
+fi
+
+echo "Starting nginx reverse proxy (for health probe availability)..."
+if ! nginx; then
+    echo "ERROR: nginx failed to start"
+    exit 1
+fi
+
+sleep 1
+if ! pgrep -x nginx > /dev/null; then
+    echo "ERROR: nginx is not running after startup"
+    exit 1
+fi
+echo "nginx started - /health/startup endpoint now available"
+
+# ============================================
 # GPU Verification: Ensure we have sufficient VRAM
 # ============================================
 # Moshi requires 24GB VRAM minimum. Exit immediately if GPU is insufficient
@@ -336,35 +361,13 @@ for i in {1..30}; do
     sleep 1
 done
 
-# Wait for deep health (PersonaPlex + Moltbot) before starting nginx
-# This ensures nginx health checks will pass once it starts
-echo "Waiting for backend services before starting nginx..."
+# Wait for deep health (PersonaPlex + Moltbot) - nginx is already running
+# Liveness/readiness probes will start after initial_delay (20 min)
+echo "Waiting for backend services to be ready..."
 wait_for_deep_health || {
-    echo "WARNING: Deep health check not passing yet, starting nginx anyway"
-    echo "Salad Cloud health probes will retry during start-period"
+    echo "WARNING: Deep health check not passing yet"
+    echo "Liveness probes will retry - backends may still be loading"
 }
-
-# Verify nginx config before starting
-echo "Verifying nginx configuration..."
-if ! nginx -t 2>/dev/null; then
-    echo "ERROR: nginx configuration is invalid"
-    nginx -t
-    exit 1
-fi
-
-# Start nginx reverse proxy (entry point on port 8998)
-echo "Starting nginx reverse proxy..."
-if ! nginx; then
-    echo "ERROR: nginx failed to start"
-    exit 1
-fi
-
-# Verify nginx is running
-sleep 1
-if ! pgrep -x nginx > /dev/null; then
-    echo "ERROR: nginx is not running after startup"
-    exit 1
-fi
 
 echo "All services started. Monitoring..."
 # Log container version for Axiom tracking
