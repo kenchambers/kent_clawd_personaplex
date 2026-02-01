@@ -53,7 +53,7 @@ wait_for_moltbot() {
 
 # Wait for orchestrator's deep health check (verifies PersonaPlex + Moltbot)
 wait_for_deep_health() {
-    local max_attempts=180  # 15 minutes max wait (model download can be slow)
+    local max_attempts=360  # 30 minutes max wait (model download can be slow)
     local attempt=0
     echo "Waiting for all services to be ready (deep health check)..."
     while [ $attempt -lt $max_attempts ]; do
