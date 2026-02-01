@@ -309,15 +309,17 @@ else
 fi
 
 # Query Axiom API
-curl -sf "https://api.axiom.co/v1/datasets/${AXIOM_DATASET_NAME}/query" \
-    -H "Authorization: Bearer ${AXIOM_API_KEY}" \
+# Query Salad Cloud native logs API (not Axiom)
+curl -s -X POST "https://api.salad.com/api/public/organizations/${SALAD_ORG}/log-entries" \
+    -H "Salad-Api-Key: ${SALAD_API_KEY}" \
     -H "Content-Type: application/json" \
     -d "{
-        \"startTime\": \"$(date -u -v-1H +%Y-%m-%dT%H:%M:%SZ)\",
-        \"endTime\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",
-        \"resolution\": \"auto\",
-        \"apl\": \"['${AXIOM_DATASET_NAME}'] | where ${QUERY:-true} | limit 100\"
-    }" | jq '.matches[]._raw'
+        \"start_time\": \"$(date -u -v-1H +%Y-%m-%dT%H:%M:%SZ)\",
+        \"end_time\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",
+        \"query\": \"${QUERY}\",
+        \"page_size\": 100,
+        \"sort_order\": \"desc\"
+    }" | jq -r '.items[] | "\(.time) [\(.severity)] \(.json_log.message // .text_log // "no message")"'
 ```
 
 ---
