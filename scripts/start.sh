@@ -301,10 +301,19 @@ fi
 
 # Start PersonaPlex server on internal port 8999 (nginx proxies from 8998)
 # --cpu-offload: Offloads model layers to CPU RAM when GPU VRAM is insufficient
-# Capture output to log file for crash diagnostics
+# Only use CPU offload if VRAM < 24GB (the model fits in ~20GB VRAM without offload)
 PERSONAPLEX_LOG="/var/log/personaplex.log"
-echo "Starting PersonaPlex on port 8999 with CPU offload enabled..."
-python -m moshi.server --ssl "$SSL_DIR" --port 8999 --cpu-offload >> "$PERSONAPLEX_LOG" 2>&1 &
+CPU_OFFLOAD_THRESHOLD=24
+MOSHI_ARGS="--ssl $SSL_DIR --port 8999"
+
+if [ -n "$VRAM_GB" ] && [ "$VRAM_GB" -lt "$CPU_OFFLOAD_THRESHOLD" ]; then
+    echo "Starting PersonaPlex with CPU offload (VRAM ${VRAM_GB}GB < ${CPU_OFFLOAD_THRESHOLD}GB threshold)..."
+    MOSHI_ARGS="$MOSHI_ARGS --cpu-offload"
+else
+    echo "Starting PersonaPlex without CPU offload (VRAM ${VRAM_GB:-unknown}GB >= ${CPU_OFFLOAD_THRESHOLD}GB threshold)..."
+fi
+
+python -m moshi.server $MOSHI_ARGS >> "$PERSONAPLEX_LOG" 2>&1 &
 PERSONAPLEX_PID=$!
 
 # Start Moltbot gateway
@@ -429,7 +438,7 @@ while true; do
         fi
 
         echo "PersonaPlex restarting (attempt $((PERSONAPLEX_FAILURE_COUNT + 1)))..."
-        python -m moshi.server --ssl "$SSL_DIR" --port 8999 --cpu-offload >> "$PERSONAPLEX_LOG" 2>&1 &
+        python -m moshi.server $MOSHI_ARGS >> "$PERSONAPLEX_LOG" 2>&1 &
         PERSONAPLEX_PID=$!
     fi
     if ! kill -0 $MOLTBOT_PID 2>/dev/null; then
