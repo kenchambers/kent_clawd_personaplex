@@ -338,18 +338,36 @@ else
     echo "Starting PersonaPlex without CPU offload (VRAM ${VRAM_GB:-unknown}GB >= ${CPU_OFFLOAD_THRESHOLD}GB threshold)..."
 fi
 
+# Initialize log files
+touch "$PERSONAPLEX_LOG"
+MOLTBOT_LOG="/var/log/moltbot.log"
+ORCHESTRATOR_LOG="/var/log/orchestrator.log"
+touch "$MOLTBOT_LOG" "$ORCHESTRATOR_LOG"
+
+# Stream all log files to stdout in background (visible in Salad Cloud logs)
+# Using tail -F to follow even if file is rotated
+echo "[STARTUP] Starting log streaming to stdout..."
+tail -F "$PERSONAPLEX_LOG" 2>/dev/null | sed 's/^/[MOSHI] /' &
+tail -F "$MOLTBOT_LOG" 2>/dev/null | sed 's/^/[MOLTBOT] /' &
+tail -F "$ORCHESTRATOR_LOG" 2>/dev/null | sed 's/^/[ORCHESTRATOR] /' &
+
+# Start PersonaPlex - logs to file (also streamed to stdout above)
+echo "[STARTUP] Starting PersonaPlex (moshi) server..."
 python -m moshi.server $MOSHI_ARGS >> "$PERSONAPLEX_LOG" 2>&1 &
 PERSONAPLEX_PID=$!
+echo "[STARTUP] PersonaPlex PID: $PERSONAPLEX_PID"
 
 # Start Moltbot gateway
-echo "Starting Moltbot gateway..."
-$MOLTBOT_BIN gateway --port 18789 &
+echo "[STARTUP] Starting Moltbot gateway..."
+$MOLTBOT_BIN gateway --port 18789 >> "$MOLTBOT_LOG" 2>&1 &
 MOLTBOT_PID=$!
+echo "[STARTUP] Moltbot PID: $MOLTBOT_PID"
 
-# Start orchestrator (bind to 0.0.0.0 for explicit IPv4 + :: for IPv6)
-echo "Starting orchestrator..."
-uvicorn orchestrator.main:app --host "0.0.0.0" --port 5000 &
+# Start orchestrator (bind to 0.0.0.0 for explicit IPv4)
+echo "[STARTUP] Starting orchestrator..."
+uvicorn orchestrator.main:app --host "0.0.0.0" --port 5000 >> "$ORCHESTRATOR_LOG" 2>&1 &
 UVICORN_PID=$!
+echo "[STARTUP] Orchestrator PID: $UVICORN_PID"
 
 # Wait for orchestrator to be ready before checking deep health
 echo "Waiting for orchestrator to start..."
