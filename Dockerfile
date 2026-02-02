@@ -8,6 +8,10 @@ ENV TZ=Asia/Tbilisi
 ARG CONTAINER_VERSION=unknown
 ENV CONTAINER_VERSION=${CONTAINER_VERSION}
 
+# Disable PyTorch Dynamo/Triton JIT compilation
+# Runtime CUDA image lacks headers for Triton - use eager mode instead
+ENV TORCHDYNAMO_DISABLE=1
+
 # Install system dependencies (single layer to reduce image size)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     software-properties-common \
