@@ -135,6 +135,17 @@ if [ ! -f "$CLAWDBOT_CONFIG_DIR/moltbot.json" ]; then
     echo "Moltbot configuration initialized"
 else
     echo "Moltbot configuration already exists at $CLAWDBOT_CONFIG_DIR"
+    # Always sync model from source config (in case it was updated)
+    SOURCE_MODEL=$(jq -r '.model' /app/moltbot/moltbot.json 2>/dev/null)
+    if [ -n "$SOURCE_MODEL" ] && [ "$SOURCE_MODEL" != "null" ]; then
+        CURRENT_MODEL=$(jq -r '.model' "$CLAWDBOT_CONFIG_DIR/moltbot.json" 2>/dev/null)
+        if [ "$SOURCE_MODEL" != "$CURRENT_MODEL" ]; then
+            echo "Updating Moltbot model from $CURRENT_MODEL to $SOURCE_MODEL"
+            jq --arg model "$SOURCE_MODEL" '.model = $model' \
+                "$CLAWDBOT_CONFIG_DIR/moltbot.json" > "$CLAWDBOT_CONFIG_DIR/moltbot.json.tmp" \
+                && mv "$CLAWDBOT_CONFIG_DIR/moltbot.json.tmp" "$CLAWDBOT_CONFIG_DIR/moltbot.json"
+        fi
+    fi
 fi
 
 # ============================================
