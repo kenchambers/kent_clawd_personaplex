@@ -21,6 +21,10 @@ from .execution import ExecutionState, ExecutionContext, _utcnow
 
 logger = logging.getLogger(__name__)
 
+# Track service startup time for grace period
+_startup_time = time.time()
+STARTUP_GRACE_PERIOD_SECONDS = 300  # 5 minutes grace period for health checks
+
 # In-memory pending confirmations: {session_id: {"command": str, "expires": float}}
 _pending: dict[str, dict] = {}
 _pending_lock = asyncio.Lock()
@@ -111,10 +115,16 @@ async def health():
 
 @app.get("/health/deep")
 async def health_deep():
-    """Deep health check - verifies all backend services are responding."""
+    """Deep health check - verifies all backend services are responding.
+    
+    During startup grace period (first 5 min), returns 200 even if services
+    are still loading, to avoid premature container termination.
+    """
     checks = {"orchestrator": "ok", "moshi": "unknown", "moltbot": "unknown"}
+    uptime = time.time() - _startup_time
+    in_grace_period = uptime < STARTUP_GRACE_PERIOD_SECONDS
 
-    async with httpx.AsyncClient(verify=False, timeout=5.0) as client:
+    async with httpx.AsyncClient(verify=False, timeout=10.0) as client:
         # Check moshi server on internal port 8999 (self-signed SSL)
         try:
             resp = await client.get("https://127.0.0.1:8999/")
@@ -145,12 +155,42 @@ async def health_deep():
             checks["moltbot"] = f"error: {type(e).__name__}"
 
     all_ok = all(v == "ok" for v in checks.values())
-    status_code = 200 if all_ok else 503
+    # Moshi is critical; moltbot is optional for basic functionality
+    moshi_ok = checks["moshi"] == "ok"
+    
+    # Determine status code:
+    # - All OK: 200
+    # - In grace period and moshi is starting: 200 (give it time)
+    # - Moshi OK but moltbot down: 200 degraded (still functional)
+    # - Moshi down after grace period: 503
+    if all_ok:
+        status_code = 200
+        status = "ok"
+    elif in_grace_period:
+        # During startup, return 200 to keep container alive while loading
+        status_code = 200
+        status = "starting"
+        logger.info("Health check during startup (%.0fs): %s", uptime, checks)
+    elif moshi_ok:
+        # Core service (moshi) is up; container is functional even if moltbot is down
+        status_code = 200
+        status = "degraded"
+        logger.warning("Moltbot unhealthy but moshi OK: %s", checks)
+    else:
+        # Critical service (moshi) is down
+        status_code = 503
+        status = "unhealthy"
+        logger.error("Health check failed - moshi down: %s", checks)
 
     from fastapi.responses import JSONResponse
     return JSONResponse(
-        content={"status": "ok" if all_ok else "degraded", "checks": checks},
-        status_code=status_code
+        content={
+            "status": status,
+            "checks": checks,
+            "uptime_seconds": int(uptime),
+            "grace_period": in_grace_period,
+        },
+        status_code=status_code,
     )
 
 
