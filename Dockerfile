@@ -72,6 +72,18 @@ RUN npm install \
     && npx vite build \
     && npm cache clean --force
 
+# Build custom PersonaPlex client (auto-transcript streaming)
+WORKDIR /app
+COPY client/package.json client/package-lock.json ./client/
+RUN cd client && npm ci --production=false
+
+COPY client/ ./client/
+RUN cd client && npm run build && ls -la dist/
+
+# Serve custom client
+RUN mkdir -p /var/www/personaplex-custom-client
+RUN cp -r client/dist/* /var/www/personaplex-custom-client/
+
 # Install orchestrator dependencies (rarely changes - cache this layer)
 WORKDIR /app
 COPY requirements.txt .

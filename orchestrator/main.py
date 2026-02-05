@@ -3,8 +3,9 @@ import json
 import logging
 import time
 import ssl
+import re
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import httpx
 from . import safety, llm, notify
@@ -444,7 +445,7 @@ async def run_moltbot(cmd: str) -> str:
 
 class BackgroundExecutePayload(BaseModel):
     transcript: str
-    commands: list[str]
+    commands: list[str] | None = None  # Make optional
 
 
 class ResumePayload(BaseModel):
@@ -547,12 +548,72 @@ async def _run_execution(ctx: ExecutionContext) -> None:
         _executions.pop(ctx.session_id, None)
 
 
+# Command safety validation patterns
+DANGEROUS_PATTERNS = [
+    r'rm\s+-rf',
+    r'dd\s+if=',
+    r'mkfs\.',
+    r'chmod\s+777',
+    r'>\s*/dev/sda',
+]
+
+
+def validate_command_safety(command: str) -> tuple[bool, str | None]:
+    """Returns (is_safe, reason_if_unsafe)"""
+    for pattern in DANGEROUS_PATTERNS:
+        if re.search(pattern, command, re.IGNORECASE):
+            return False, f"Command matches dangerous pattern: {pattern}"
+    return True, None
+
+
 @app.post("/execute/background")
 async def start_background_execution(payload: BackgroundExecutePayload):
     """Start a background execution with human-in-the-loop support."""
+    # Extract commands if not provided
+    if not payload.commands:
+        try:
+            response = await asyncio.wait_for(
+                llm.extract_commands_from_conversation(
+                    [payload.transcript], []
+                ),
+                timeout=10.0  # 10 second timeout for LLM
+            )
+            commands = response.get("commands", [])
+
+            # Fail fast if no commands extracted
+            if not commands:
+                raise HTTPException(
+                    status_code=422,
+                    detail="No commands extracted from transcript. "
+                           "Please provide explicit commands or clarify your request."
+                )
+        except asyncio.TimeoutError:
+            raise HTTPException(
+                status_code=504,
+                detail="Command extraction timed out. Please try again."
+            )
+    else:
+        commands = payload.commands
+
+    # Validate commands are non-empty strings
+    if not all(cmd.strip() for cmd in commands):
+        raise HTTPException(
+            status_code=422,
+            detail="Commands cannot be empty strings"
+        )
+
+    # Safety validation (optional but recommended)
+    for cmd in commands:
+        is_safe, reason = validate_command_safety(cmd)
+        if not is_safe:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Command rejected for safety: {reason}"
+            )
+
     ctx = ExecutionContext(
         transcript=[payload.transcript],
-        commands=payload.commands,
+        commands=commands,
     )
     event = asyncio.Event()
     _executions[ctx.session_id] = {"ctx": ctx, "event": event}
