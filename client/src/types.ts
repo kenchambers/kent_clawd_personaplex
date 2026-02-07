@@ -1,28 +1,4 @@
-// WebSocket Message Types
-export enum MessageType {
-  AudioIn = 0,
-  Word = 2,
-  EndWord = 3,
-}
-
-export interface WordMessage {
-  type: MessageType.Word;
-  word: string;
-  timestamp: number;
-  confidence?: number;
-}
-
-export interface EndWordMessage {
-  type: MessageType.EndWord;
-  timestamp: number;
-}
-
-export interface AudioMessage {
-  type: MessageType.AudioIn;
-  data: Uint8Array;
-}
-
-export type WebSocketMessage = WordMessage | EndWordMessage | AudioMessage;
+// WebSocket Message Types are now in ./protocol/types.ts
 
 // Transcript Types
 export interface Sentence {

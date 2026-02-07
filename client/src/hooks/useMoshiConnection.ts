@@ -1,18 +1,19 @@
-import { encode, decode } from '@msgpack/msgpack';
 import OpusRecorder from 'opus-recorder';
 import { useRef, useState, useCallback, useEffect } from 'react';
-import type { WebSocketMessage } from '../types';
+import { encodeHandshake, encodeAudio, decodeMessage } from '../protocol';
 
 interface UseMoshiConnectionOptions {
-  onWord: (word: string, timestamp: number) => void;
-  onEndWord: (timestamp: number) => void;
+  onText: (text: string) => void;
+  onAudio?: (data: Uint8Array) => void;
+  onError?: (error: string) => void;
 }
 
-export function useMoshiConnection({ onWord, onEndWord }: UseMoshiConnectionOptions) {
+export function useMoshiConnection({ onText, onAudio, onError }: UseMoshiConnectionOptions) {
   const wsRef = useRef<WebSocket | null>(null);
   const recorderRef = useRef<OpusRecorder | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout>();
+  const handshakeSentRef = useRef(false);
 
   const [isConnected, setIsConnected] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -36,7 +37,14 @@ export function useMoshiConnection({ onWord, onEndWord }: UseMoshiConnectionOpti
       ws.binaryType = 'arraybuffer';
 
       ws.onopen = () => {
-        console.log('WebSocket connected');
+        console.log('WebSocket connected, sending handshake...');
+
+        // Send required Moshi protocol handshake
+        const handshake = encodeHandshake('0', '0');
+        ws.send(handshake);
+        handshakeSentRef.current = true;
+        console.log('Handshake sent');
+
         setIsConnected(true);
         setError(null);
         reconnectAttemptsRef.current = 0; // Reset on success
@@ -71,12 +79,43 @@ export function useMoshiConnection({ onWord, onEndWord }: UseMoshiConnectionOpti
 
       ws.onmessage = (event) => {
         try {
-          const msg = decode(new Uint8Array(event.data)) as WebSocketMessage;
+          const msg = decodeMessage(event.data);
 
-          if (msg.type === 2) { // MessageType.Word
-            onWord(msg.word, msg.timestamp);
-          } else if (msg.type === 3) { // MessageType.EndWord
-            onEndWord(msg.timestamp);
+          switch (msg.kind) {
+            case 'text':
+              // Moshi sends transcribed text tokens
+              onText(msg.data);
+              break;
+
+            case 'audio':
+              // Moshi sends audio response data
+              onAudio?.(msg.data);
+              break;
+
+            case 'error':
+              console.error('Moshi error:', msg.data);
+              onError?.(msg.data);
+              setError(msg.data);
+              break;
+
+            case 'handshake':
+              console.log('Server handshake received:', msg);
+              break;
+
+            case 'control':
+              console.log('Control message:', msg.action);
+              break;
+
+            case 'metadata':
+              console.log('Metadata:', msg.data);
+              break;
+
+            case 'ping':
+              // Respond to keep-alive pings if needed
+              break;
+
+            default:
+              console.log('Unknown message:', msg);
           }
         } catch (err) {
           console.error('Failed to decode message', err);
@@ -88,7 +127,7 @@ export function useMoshiConnection({ onWord, onEndWord }: UseMoshiConnectionOpti
       console.error('Failed to create WebSocket', err);
       setError('Failed to create WebSocket connection');
     }
-  }, [getWebSocketUrl, onWord, onEndWord]);
+  }, [getWebSocketUrl, onText, onAudio, onError]);
 
   const disconnect = useCallback(() => {
     if (reconnectTimeoutRef.current) {
@@ -100,6 +139,7 @@ export function useMoshiConnection({ onWord, onEndWord }: UseMoshiConnectionOpti
       wsRef.current = null;
     }
 
+    handshakeSentRef.current = false;
     setIsConnected(false);
   }, []);
 
@@ -120,7 +160,8 @@ export function useMoshiConnection({ onWord, onEndWord }: UseMoshiConnectionOpti
       recorder.ondataavailable = (arrayBuffer: ArrayBuffer) => {
         if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
           const audioData = new Uint8Array(arrayBuffer);
-          const message = encode({ type: 0, data: audioData }); // MessageType.AudioIn
+          // Use Moshi binary protocol for audio
+          const message = encodeAudio(audioData);
           wsRef.current.send(message);
         }
       };

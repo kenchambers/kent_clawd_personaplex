@@ -39,15 +39,20 @@ function App() {
     onSend: handleSend,
   });
 
-  // Word/EndWord event handlers
-  const handleWord = useCallback((word: string, _timestamp: number) => {
-    addWord(word);
-    onAutoSendWord(); // Trigger auto-send silence detection
-  }, [addWord, onAutoSendWord]);
+  // Text event handler - receives transcribed text tokens from Moshi
+  const handleText = useCallback((text: string) => {
+    // Moshi sends text tokens (words or punctuation)
+    // Add each token and trigger auto-send detection
+    if (text.trim()) {
+      addWord(text);
+      onAutoSendWord(); // Trigger auto-send silence detection
 
-  const handleEndWord = useCallback((_timestamp: number) => {
-    endSentence();
-  }, [endSentence]);
+      // End sentence on terminal punctuation
+      if (text.match(/[.!?]$/)) {
+        endSentence();
+      }
+    }
+  }, [addWord, onAutoSendWord, endSentence]);
 
   // Moshi WebSocket + Audio connection
   const {
@@ -58,8 +63,7 @@ function App() {
     startRecording,
     stopRecording,
   } = useMoshiConnection({
-    onWord: handleWord,
-    onEndWord: handleEndWord,
+    onText: handleText,
   });
 
   // Execution status monitoring
